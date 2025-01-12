@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily apt upgrade and clean activities
+After=apt-daily.timer
+
+[Timer]
+OnCalendar=*-*-* 11:30,16:30,22:30
+RandomizedDelaySec=60m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

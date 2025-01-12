@@ -1,0 +1,13 @@
+[Unit]
+Description=dnf-automatic timer
+# See comment in dnf-makecache.service
+ConditionPathExists=!/run/ostree-booted
+Wants=network-online.target
+
+[Timer]
+OnCalendar=*-*-* 00,17:45:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

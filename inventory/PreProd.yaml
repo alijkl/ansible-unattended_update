@@ -1,0 +1,11 @@
+hosts:
+  hosts:
+    example.org:
+      ansible_host: 2001:db8::1:1
+      ansible_user: admin
+    example.com:
+      ansible_host: 2001:db8::1:2
+      ansible_user: debian
+    example.edu:
+      ansible_host: 2001:db8::1:3
+      ansible_user: ubuntu

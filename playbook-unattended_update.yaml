@@ -1,0 +1,39 @@
+
+- name: All Servers
+  hosts:
+    - all
+  serial: 3
+  become: true
+
+  # vars:
+
+  tasks:
+    - name: Load a variable file
+      include_vars:
+        file: "{{lookup('first_found', [item, '/dev/null'])}}"
+        hash_behaviour: replace
+      # ansible.builtin.debug:
+      #   msg: "{{item}}"
+      loop:
+        - 'vars/Default-unattended_update.yaml'
+        - 'vars/{{inventory_hostname}}.yaml'
+
+    # - name: "Ansible | List all known variables and facts"
+    #   debug:
+    #     var: hostvars[inventory_hostname]
+
+    - include_tasks: tasks/software_updates_dnf.yaml
+      when: ansible_os_family == 'RedHat'
+
+    - include_tasks: tasks/software_updates_apt.yaml
+      when: ansible_os_family == 'Debian'
+
+    - name: Reboot with timeout 360 for slow machine
+      ansible.builtin.reboot:
+        reboot_timeout: 360
+      when: reboot is defined and reboot == true
+
+  handlers:
+
+    - name: Reload systemctl
+      ansible.builtin.command: systemctl daemon-reload

@@ -1,0 +1,158 @@
+- name: assert supported distrib
+  ansible.builtin.assert:
+    that: ansible_distribution in ['Debian', 'Ubuntu']
+
+- name: Only run "update_cache=yes" if the last one is more than 12h ago
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 43200
+
+- name: install unattended packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - apt-listchanges
+    state: present
+
+- name: stat /etc/apt/apt.conf.d/50unattended-upgrades
+  ansible.builtin.stat:
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+  register: unattended_conf
+
+- name: purge unattended package if config is missing
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+    state: absent
+    purge: true
+  when: unattended_conf.stat.exists == false
+
+- name: install unattended packages
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+    state: present
+
+- name: template debian /etc/apt/apt.conf.d/52unattended-upgrades-local
+  ansible.builtin.template:
+    src: templates/apt-debian-52unattended-upgrades-local.j2
+    dest: '/etc/apt/apt.conf.d/52unattended-upgrades-local'
+    owner: root
+    group: root
+    mode: '0644'
+  when: ansible_distribution == "Debian"
+
+- name: template ubuntu /etc/apt/apt.conf.d/52unattended-upgrades-local
+  ansible.builtin.template:
+    src: templates/apt-ubuntu-52unattended-upgrades-local.j2
+    dest: '/etc/apt/apt.conf.d/52unattended-upgrades-local'
+    owner: root
+    group: root
+    mode: '0644'
+  when: ansible_distribution == "Ubuntu"
+
+- name: template /etc/apt/apt.conf.d/20auto-upgrades
+  ansible.builtin.template:
+    src: templates/apt-20auto-upgrades.j2
+    dest: '/etc/apt/apt.conf.d/20auto-upgrades'
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: mkdir /etc/systemd/system/apt-daily.timer.d/
+  ansible.builtin.file:
+    path: "/etc/systemd/system/apt-daily.timer.d/"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: '0750'
+
+- name: template /etc/systemd/system/apt-daily.timer.d/override.conf
+  ansible.builtin.template:
+    src: templates/apt-daily.timer.d_override.conf.j2
+    dest: '/etc/systemd/system/apt-daily.timer.d/override.conf'
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemctl
+
+- name: mkdir /etc/systemd/system/apt-daily-upgrade.timer.d/
+  ansible.builtin.file:
+    path: "/etc/systemd/system/apt-daily-upgrade.timer.d/"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: '0750'
+
+- name: template /etc/systemd/system/apt-daily-upgrade.timer.d/override.conf
+  ansible.builtin.template:
+    src: templates/apt-daily-upgrade.timer.d_override.conf.j2
+    dest: '/etc/systemd/system/apt-daily-upgrade.timer.d/override.conf'
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemctl
+
+- name: "apt-daily.timer"
+  ansible.builtin.service:
+    name: apt-daily-upgrade.timer
+    enabled: yes
+    state: started
+
+- name: "apt-daily-upgrade.timer"
+  ansible.builtin.service:
+    name: apt-daily-upgrade.timer
+    enabled: yes
+    state: started
+
+- name: "apt-daily.service"
+  ansible.builtin.service:
+    name: apt-daily-upgrade.service
+    enabled: yes
+    state: started
+  when:
+    - run_immediately is defined
+    - run_immediately
+
+- name: "apt-daily-upgrade.service"
+  ansible.builtin.service:
+    name: apt-daily-upgrade.service
+    enabled: yes
+    state: restarted
+  when:
+    - run_immediately is defined
+    - run_immediately
+
+- name: get latest update end date from /var/log/apt/history.log
+  ansible.builtin.shell: >-
+    awk '/Upgrade/,/End-Date/ {print}' /var/log/apt/history.log | tail -n 1
+  register: stat_end_date
+  ignore_errors: True
+
+- name: get latest update end date from /var/log/apt/history.log.1.gz
+  ansible.builtin.shell: >-
+    zcat /var/log/apt/history.log.1.gz | awk '/Upgrade/,/End-Date/ {print}' | tail -n 1
+  register: "stat_end_date_1"
+  ignore_errors: True
+  when: stat_end_date.stdout == ""
+
+- name: get latest update end date from /var/log/apt/history.log.2.gz
+  ansible.builtin.shell: >-
+    zcat /var/log/apt/history.log.2.gz | awk '/Upgrade/,/End-Date/ {print}' | tail -n 1
+  register: "stat_end_date_2"
+  ignore_errors: True
+  when: stat_end_date_1.stdout is defined and stat_end_date_1.stdout == ""
+
+- name: show latest update end date
+  ansible.builtin.debug:
+    msg: "{{ item.cmd }}, {{ item.stdout | default ('') }}"
+  loop:
+    - "{{ stat_end_date }}"
+    - "{{ stat_end_date_1 }}"
+    - "{{ stat_end_date_2 }}"
+  when:
+    - "item.stdout is defined"
+    - "item.stdout != ''"
+  retries: 0

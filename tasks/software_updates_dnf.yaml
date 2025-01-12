@@ -1,0 +1,64 @@
+- name: Install the latest DNF Automatic tool.
+  ansible.builtin.dnf:
+    name:
+      - dnf-automatic
+    disablerepo: 'epel'
+    state: latest
+
+- name: "upgrade type security"
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^upgrade_type ='
+    line: upgrade_type = security
+    insertafter: \[commands\]
+  when: is_dev_site is not defined or is_dev_site == false
+
+- name: "upgrade type default"
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^upgrade_type ='
+    line: upgrade_type = default
+    insertafter: \[commands\]
+  when: is_dev_site is defined and is_dev_site == true
+
+- name: "apply_updates"
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^apply_updates ='
+    line: apply_updates = yes
+    insertafter: \[commands\]
+
+- name: "never reboot"
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^reboot ='
+    line: reboot = never
+    insertafter: \[commands\]
+  when: is_dev_site is not defined or is_dev_site == false
+
+- name: "reboot when necessary"
+  ansible.builtin.lineinfile:
+    path: /etc/dnf/automatic.conf
+    regexp: '^reboot ='
+    line: reboot = when-needed
+    insertafter: \[commands\]
+  when: is_dev_site is defined and is_dev_site == true
+
+- name: Template dnf-automatic.timer
+  ansible.builtin.template:
+    src: templates/dnf-automatic.timer.j2
+    dest: '/etc/systemd/system/dnf-automatic.timer'
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemctl
+
+- name: Flush handlers
+  meta: flush_handlers
+
+- name: "DNF Automatic timer"
+  ansible.builtin.service:
+    name: dnf-automatic.timer
+    enabled: yes
+    state: started
